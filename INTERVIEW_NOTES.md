@@ -14,7 +14,7 @@
 - Disabled open-in-view: avoids hidden lazy-loading queries during response rendering.
 - Kafka runs in KRaft mode — ZooKeeper is gone from modern Kafka.
 - pgvector image from day one so the RAG milestone needs no infra change.
-- Spring Initializr no longer offers Spring Boot 3 — project runs on Boot 4.1.0. Verified this is a refinement, not a rewrite: Java baseline unchanged at 17, main visible change is starter modularization (spring-boot-starter-web -> spring-boot-starter-webmvc, spring-kafka -> spring-boot-starter-kafka, flyway-core -> spring-boot-starter-flyway + flyway-database-postgresql). Jackson 3 is now default — worth watching for money/BigDecimal serialization behavior once the ledger API ships.
+- Spring Initializr no longer offers Spring Boot 3 — project runs on Boot 4.1.0. Verified this is a refinement, not a rewrite: Boot 4's minimum Java baseline is still 17, so our Java 21 choice is unaffected, main visible change is starter modularization (spring-boot-starter-web -> spring-boot-starter-webmvc, spring-kafka -> spring-boot-starter-kafka, flyway-core -> spring-boot-starter-flyway + flyway-database-postgresql). Jackson 3 is now default — worth watching for money/BigDecimal serialization behavior once the ledger API ships.
 - Testcontainers pinned to match Compose exactly (pgvector/pgvector:pg16, redis:7-alpine, apache/kafka:3.8.0) instead of :latest, so test DB has the same extensions as the real one and tests stay reproducible.
 
 ## Gaps closed
