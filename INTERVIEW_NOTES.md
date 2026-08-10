@@ -27,3 +27,9 @@
 - Pinned JAVA_HOME to Temurin 21 explicitly via shell profile, even though a newer JDK (25) was also installed — real teams pin JDK versions per project rather than relying on whatever the machine defaults to.
 - Chose a monorepo (backend/ + frontend/ in one repo) over two separate repos — simpler to showcase as one coherent project, one README, one CI pipeline, at the cost of slightly coupled deploy pipelines later.
 - CI's frontend job currently skips `npm run lint` deliberately — a fresh Vite scaffold's default lint config isn't meaningful until real code exists to lint against; will add back once the frontend has actual components.
+
+## Day 0 continued — frontend styling stack
+- Vite's react-ts scaffold defaulted to React 19.2.8, not React 18 as originally planned. Confirmed React 19 is stable and fully supported by every other planned library (TanStack Query, RHF, Zod, Router, shadcn/ui, Recharts) — no downgrade needed, locked stack updated to reflect reality.
+- Adopted Tailwind CSS v4 (not v3) — the `@tailwindcss/vite` plugin replaces the old PostCSS-based setup, and `src/index.css` uses a single `@import "tailwindcss"` instead of the old three `@tailwind` directives.
+- shadcn/ui requires a `@/*` path alias resolving to `src/`. On current TypeScript, `baseUrl` is deprecated as a hard error under `moduleResolution: "bundler"` — `paths` alone resolves correctly without it. shadcn's own docs still show the older baseUrl+paths pattern, which breaks on current TS — had to diagnose and fix this directly.
+- shadcn is listed in `dependencies`, not `devDependencies` — correct despite looking unusual for a CLI tool, because `index.css` does a runtime `@import` of shadcn's base styles, making it a genuine runtime CSS dependency.
