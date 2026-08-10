@@ -28,7 +28,7 @@ guarantee correctness and auditability. Full writeup in `INTERVIEW_NOTES.md`.
 Security (JWT, refresh rotation, RBAC), Kafka, Redis, PostgreSQL + Flyway,
 Spring AI (RAG, planned)
 
-**Frontend:** React 18 + TypeScript (Vite), TanStack Query, React Hook Form +
+**Frontend:** React 19 + TypeScript (Vite), TanStack Query, React Hook Form +
 Zod, React Router, Tailwind CSS + shadcn/ui, Recharts (planned)
 
 **Testing:** JUnit 5, Mockito, Testcontainers (real Postgres/Redis/Kafka in
@@ -41,6 +41,8 @@ tests), React Testing Library, Playwright (planned)
 > writing, so the backend runs on Boot 4.1.0. This is a refinement, not a
 > rewrite — Java baseline is unchanged, and the practical difference is
 > mostly starter-module naming. Details in `INTERVIEW_NOTES.md`.
+> Vite's React scaffold now defaults to React 19, not 18 as originally
+> planned. Fully compatible with every library in this stack.
 
 ## Project status
 
