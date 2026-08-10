@@ -79,9 +79,42 @@ npm run dev
 ```
 
 ## Repository structure
+
+```
 LedgerX/
-├── backend/ Spring Boot API (Java 21, Boot 4.1.0)
-├── frontend/ React + TypeScript (Vite)
-├── docker-compose.yml
-├── INTERVIEW_NOTES.md Architecture decisions, logged day by day
-└── README.md
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # Backend build+test, frontend build
+├── backend/                    # Spring Boot API (Java 21, Boot 4.1.0)
+│   ├── .mvn/wrapper/
+│   ├── mvnw / mvnw.cmd
+│   ├── pom.xml
+│   └── src/
+│       ├── main/
+│       │   ├── java/dev/ledgerx/
+│       │   │   └── LedgerxApplication.java
+│       │   └── resources/
+│       │       ├── application.yml
+│       │       └── db/migration/
+│       │           └── V1__init.sql   # Flyway: schema_sanity check table
+│       └── test/
+│           └── java/dev/ledgerx/
+│               ├── LedgerxApplicationTests.java
+│               └── TestcontainersConfiguration.java  # Postgres/Redis/Kafka test containers
+├── frontend/                   # React + TypeScript (Vite)
+│   ├── public/
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── main.tsx
+│   │   └── index.css
+│   ├── components.json         # shadcn/ui config
+│   ├── index.html
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── vite.config.ts
+├── docker-compose.yml          # Postgres (pgvector), Redis, Kafka (KRaft)
+├── INTERVIEW_NOTES.md          # Architecture decisions, logged day by day
+├── LICENSE
+├── README.md
+└── .gitignore
+```
