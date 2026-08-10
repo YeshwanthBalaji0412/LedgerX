@@ -22,3 +22,8 @@
 
 ## Gaps to close
 - (log anything that confuses you here as we build)
+
+## Additional Day 0 decisions
+- Pinned JAVA_HOME to Temurin 21 explicitly via shell profile, even though a newer JDK (25) was also installed — real teams pin JDK versions per project rather than relying on whatever the machine defaults to.
+- Chose a monorepo (backend/ + frontend/ in one repo) over two separate repos — simpler to showcase as one coherent project, one README, one CI pipeline, at the cost of slightly coupled deploy pipelines later.
+- CI's frontend job currently skips `npm run lint` deliberately — a fresh Vite scaffold's default lint config isn't meaningful until real code exists to lint against; will add back once the frontend has actual components.
