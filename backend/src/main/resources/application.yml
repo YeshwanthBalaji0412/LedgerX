@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: ledgerx
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ledgerx
+    username: ledgerx
+    password: ledgerx_dev
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+  kafka:
+    bootstrap-servers: localhost:9092
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics

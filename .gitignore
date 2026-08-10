@@ -1,3 +1,4 @@
+# ===== Java =====
 # Compiled class file
 *.class
 
@@ -22,3 +23,32 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+
+# ===== Maven =====
+target/
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+
+# ===== Node / Frontend =====
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# ===== Environment / secrets =====
+.env
+.env.local
+.env.*.local
+
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+!.vscode/extensions.json
+
+# ===== OS junk =====
+.DS_Store
+Thumbs.db
+
+# ===== Docker =====
+*.pid
