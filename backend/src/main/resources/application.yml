@@ -2,17 +2,31 @@ spring:
   application:
     name: ledgerx
   datasource:
-    url: jdbc:postgresql://localhost:5432/ledgerx
-    username: ledgerx
-    password: ledgerx_dev
+    # The runtime connection uses the least privilege role: it can read and
+    # write rows but cannot alter schema, and so cannot disable the append-only
+    # triggers on ledger_entries and audit_log.
+    url: ${LEDGERX_DB_URL:jdbc:postgresql://localhost:5432/ledgerx}
+    username: ${LEDGERX_DB_USER:ledgerx_app}
+    password: ${LEDGERX_DB_PASSWORD:ledgerx_app_dev}
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
   flyway:
     enabled: true
+    # Migrations run as the schema owner, because DDL is precisely the privilege
+    # the runtime role is denied. Separating them is what lets the application
+    # be least privilege without giving up versioned schema management.
+    user: ${LEDGERX_DB_MIGRATION_USER:ledgerx}
+    password: ${LEDGERX_DB_MIGRATION_PASSWORD:ledgerx_dev}
   kafka:
     bootstrap-servers: localhost:9092
+    consumer:
+      # earliest so a consumer that starts after an event was published still
+      # records it; the audit trail must not have holes because of start order.
+      auto-offset-reset: earliest
+    producer:
+      acks: all
   data:
     redis:
       host: localhost
@@ -23,3 +37,43 @@ management:
     web:
       exposure:
         include: health,info,metrics
+
+ledgerx:
+  web:
+    # Vite's dev server by default; override per environment. Enumerated rather
+    # than wildcarded so an unexpected origin is a deployment decision.
+    allowed-origins: ${LEDGERX_ALLOWED_ORIGINS:http://localhost:5173}
+  jwt:
+    secret: ${LEDGERX_JWT_SECRET:dev-only-secret-change-me-must-be-at-least-32-bytes-long}
+    # Five minutes, not fifteen. No server-side state change takes effect until
+    # this expires, so the window is the mitigation. See INTERVIEW_NOTES.
+    access-token-ttl: PT5M
+    refresh-token-ttl: P7D
+  ledger:
+    # One hundred million minor units, so one million dollars. Caps blast radius
+    # and keeps every running total far inside a signed 64 bit integer.
+    max-movement-minor-units: 100000000
+  transfer:
+    # Bounded: past a few attempts, contention is an honest conflict rather than
+    # something to keep hiding from the caller.
+    max-optimistic-retries: 3
+    settle-after: PT1S
+    rate-limit-window: PT1M
+    rate-limit-per-window: 60
+  settlement:
+    enabled: true
+    poll-interval: 1000
+  fraud:
+    # Reaching the limit is fine; exceeding it is what trips the rule.
+    window: PT1M
+    max-transfers-per-window: 5
+    max-amount-per-window: 500000
+    max-optimistic-retries: 3
+    consumer-group: ledgerx-fraud
+  outbox:
+    enabled: true
+    poll-interval: 500
+    transfer-topic: transfer.events
+    ledger-topic: ledger.audit
+    consumer-group: ledgerx-audit
+    send-timeout: PT5S

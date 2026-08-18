@@ -9,13 +9,22 @@ import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @TestConfiguration(proxyBeanMethods = false)
-class TestcontainersConfiguration {
+public class TestcontainersConfiguration {
 
+	/**
+	 * The container's role is named to match the schema owner configured for
+	 * Flyway, because Flyway connects with its own credentials rather than the
+	 * datasource's. Tests therefore run as the owner and do not exercise the
+	 * least privilege runtime role; that separation is a deployment property and
+	 * is verified directly against Postgres instead.
+	 */
 	@Bean
 	@ServiceConnection
 	PostgreSQLContainer<?> postgresContainer() {
 		return new PostgreSQLContainer<>(
-				DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"));
+				DockerImageName.parse("pgvector/pgvector:pg16").asCompatibleSubstituteFor("postgres"))
+				.withUsername("ledgerx")
+				.withPassword("ledgerx_dev");
 	}
 
 	@Bean

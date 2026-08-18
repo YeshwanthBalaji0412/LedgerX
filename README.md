@@ -80,6 +80,45 @@ npm install
 npm run dev
 ```
 
+## Scope limits
+
+This is a portfolio system, not a payment processor. The limits below are
+deliberate and stated plainly rather than left for a reader to discover.
+
+- **There is no external funding source, so any authenticated user can mint
+  themselves unlimited funds.** `POST /api/accounts/{id}/deposits` credits an
+  account against the treasury with no upstream card, bank, or settlement rail
+  behind it. A per-movement ceiling and a per-user rate limit bound how fast
+  that happens, not how much: at the configured limits that is roughly $60M per
+  minute, indefinitely. This is a sandbox faucet, and it is the single largest
+  gap between this and a real system.
+- **No server-side state change takes effect until an access token expires.**
+  Logout, user deletion, a role change, and an account freeze all leave an
+  already-issued access token valid for the rest of its five minute life. That
+  is the cost of stateless verification, taken knowingly.
+- **Authentication endpoints are not rate limited.** Rate limiting covers
+  transfers, not registration or login, so credential stuffing is not defended
+  against.
+- Single currency (USD), no reconciliation against external bank files, no
+  KYC/AML, no multi-region durability, and no dead letter queue: an event that
+  cannot be published is retried indefinitely rather than parked.
+
+## Database roles
+
+The application connects as `ledgerx_app`, a role that can read and write rows
+but cannot alter schema — so a compromised application cannot disable the
+append-only triggers on `ledger_entries` and `audit_log`. Migrations run
+separately as the schema owner `ledgerx`, because DDL is exactly the privilege
+the runtime must not hold.
+
+`docker/postgres/init/01-app-role.sql` runs automatically on a fresh volume. To
+apply it to a database that already exists:
+
+```bash
+docker compose exec -T postgres psql -U ledgerx -d ledgerx \
+  < docker/postgres/init/01-app-role.sql
+```
+
 ## Repository structure
 
 ```
