@@ -8,6 +8,9 @@ import dev.ledgerx.fraud.FraudFlagNotFoundException;
 import dev.ledgerx.ledger.AccountNotFoundException;
 import dev.ledgerx.ledger.InsufficientFundsException;
 import dev.ledgerx.ledger.LedgerException;
+import dev.ledgerx.statement.InvalidPeriodException;
+import dev.ledgerx.statement.PeriodNotClosedException;
+import dev.ledgerx.statement.StatementNotFoundException;
 import dev.ledgerx.transfer.IdempotencyConflictException;
 import dev.ledgerx.transfer.RateLimitExceededException;
 import dev.ledgerx.transfer.RequestInProgressException;
@@ -149,6 +152,25 @@ public class GlobalExceptionHandler {
                 "One or more parameters are the wrong type",
                 Map.of(e.getName(), "is not a valid value"));
         return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(StatementNotFoundException.class)
+    ResponseEntity<ErrorResponse> handleStatementNotFound(StatementNotFoundException e) {
+        return build(HttpStatus.NOT_FOUND, "STATEMENT_NOT_FOUND", e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidPeriodException.class)
+    ResponseEntity<ErrorResponse> handleInvalidPeriod(InvalidPeriodException e) {
+        return build(HttpStatus.BAD_REQUEST, "INVALID_PERIOD", e.getMessage());
+    }
+
+    /**
+     * 409 rather than 400: the request is well formed and will succeed
+     * unchanged once the period ends.
+     */
+    @ExceptionHandler(PeriodNotClosedException.class)
+    ResponseEntity<ErrorResponse> handlePeriodNotClosed(PeriodNotClosedException e) {
+        return build(HttpStatus.CONFLICT, "PERIOD_NOT_CLOSED", e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
