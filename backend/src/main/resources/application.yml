@@ -31,6 +31,13 @@ spring:
     redis:
       host: localhost
       port: 6379
+    web:
+      pageable:
+        # Spring warns on startup that serializing PageImpl directly has no
+        # stable JSON structure. VIA_DTO emits PagedModel instead: content plus
+        # a small page object, with none of the internal pageable/sort blob, and
+        # a contract the framework actually commits to across versions.
+        serialization-mode: VIA_DTO
 
 management:
   endpoints:

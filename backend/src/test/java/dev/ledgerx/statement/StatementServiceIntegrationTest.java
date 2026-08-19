@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -124,7 +125,11 @@ class StatementServiceIntegrationTest {
         assertThat(march.closingBalanceMinorUnits()).isEqualTo(80_000);
         assertThat(march.netMovementMinorUnits()).isEqualTo(80_000);
         assertThat(march.entryCount()).isEqualTo(2);
-        assertThat(march.lineItems()).doesNotContain("999999").doesNotContain("999_999");
+        // No line carries the corrupted figure either: the running balances were
+        // walked from the derived opening, not seeded from the cache.
+        assertThat(march.lineItems())
+                .extracting(StatementLine::balanceAfterMinorUnits)
+                .containsExactly(100_000L, 80_000L);
     }
 
     // ---------------------------------------------------------------
@@ -207,17 +212,17 @@ class StatementServiceIntegrationTest {
         assertThat(april.openingBalanceMinorUnits()).isEqualTo(100_000);
         assertThat(april.closingBalanceMinorUnits()).isEqualTo(75_000);
 
-        // Parsed rather than string-matched: the column is jsonb, so Postgres
-        // reformats and reorders the document on the way in.
-        JsonNode lines = objectMapper.readTree(april.lineItems());
+        // Typed now, so the assertions are on values rather than on how Postgres
+        // happened to reformat the stored document.
+        List<StatementLine> lines = april.lineItems();
         assertThat(lines).hasSize(2);
-        assertThat(lines.get(0).get("occurredAt").asString()).startsWith("2026-04-10");
-        assertThat(lines.get(1).get("occurredAt").asString()).startsWith("2026-04-28");
+        assertThat(lines.get(0).occurredAt()).isEqualTo(at(APRIL, 10));
+        assertThat(lines.get(1).occurredAt()).isEqualTo(at(APRIL, 28));
 
         // The running balance walks from the opening balance to the closing one;
         // a March or May entry leaking in would break that chain.
-        assertThat(lines.get(0).get("balanceAfterMinorUnits").asLong()).isEqualTo(80_000);
-        assertThat(lines.get(1).get("balanceAfterMinorUnits").asLong())
+        assertThat(lines.get(0).balanceAfterMinorUnits()).isEqualTo(80_000);
+        assertThat(lines.get(1).balanceAfterMinorUnits())
                 .isEqualTo(april.closingBalanceMinorUnits());
     }
 

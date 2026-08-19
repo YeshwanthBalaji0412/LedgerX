@@ -133,6 +133,18 @@ public class AuthService {
         return issueTokens(user, familyId, now);
     }
 
+    /**
+     * Resolves the caller from the database rather than from token claims.
+     * A client can decode a JWT for display, but the moment that decoding is
+     * relied on for anything it becomes an authorization decision made by the
+     * party being authorized. Answering here keeps that boundary clear.
+     */
+    @Transactional(readOnly = true)
+    public User requireUser(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new InvalidCredentialsException());
+    }
+
     @Transactional
     public void logout(String rawRefreshToken) {
         Instant now = clock.instant();

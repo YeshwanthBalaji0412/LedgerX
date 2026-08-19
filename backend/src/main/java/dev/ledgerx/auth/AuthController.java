@@ -1,6 +1,7 @@
 package dev.ledgerx.auth;
 
 import dev.ledgerx.auth.dto.AuthResponse;
+import dev.ledgerx.auth.dto.CurrentUserResponse;
 import dev.ledgerx.auth.dto.LoginRequest;
 import dev.ledgerx.auth.dto.RefreshTokenRequest;
 import dev.ledgerx.auth.dto.RegisterRequest;
@@ -10,15 +11,20 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 @Tag(name = "Authentication", description = "Registration, sign-in, and refresh token rotation")
 @SecurityRequirements  // these endpoints are the way you obtain a token, so none is required
@@ -85,6 +91,22 @@ public class AuthController {
      * such token" would turn logout into an oracle for guessing valid tokens,
      * and a client has nothing useful to do with the distinction anyway.
      */
+    @Operation(summary = "Who am I",
+            description = """
+                    Resolves the caller from the token, server-side. Clients can decode the JWT
+                    themselves for display, but should treat this as the source of truth: a claim
+                    read by the client is not an authorization decision.""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "The authenticated caller"),
+            @ApiResponse(responseCode = "401", description = "Missing, expired or invalid token",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @SecurityRequirement(name = "bearerAuth")
+    @GetMapping("/me")
+    CurrentUserResponse me(@AuthenticationPrincipal UUID userId) {
+        return CurrentUserResponse.from(authService.requireUser(userId));
+    }
+
     @Operation(summary = "Sign out",
             description = """
                     Revokes the token's whole session lineage. Always 204, including for a token

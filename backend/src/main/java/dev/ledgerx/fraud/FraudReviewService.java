@@ -19,15 +19,18 @@ public class FraudReviewService {
     private final FraudFlagRepository flags;
     private final UserRepository users;
     private final OutboxRecorder outboxRecorder;
+    private final tools.jackson.databind.ObjectMapper objectMapper;
     private final Clock clock;
 
     public FraudReviewService(FraudFlagRepository flags,
                               UserRepository users,
                               OutboxRecorder outboxRecorder,
+                              tools.jackson.databind.ObjectMapper objectMapper,
                               Clock clock) {
         this.flags = flags;
         this.users = users;
         this.outboxRecorder = outboxRecorder;
+        this.objectMapper = objectMapper;
         this.clock = clock;
     }
 
@@ -37,7 +40,13 @@ public class FraudReviewService {
         Page<FraudFlag> found = status == null
                 ? flags.findAllByOrderByCreatedAtDesc(pageable)
                 : flags.findAllByStatusOrderByCreatedAtDesc(status, pageable);
-        return found.map(FraudFlagResponse::from);
+        return found.map(this::describe);
+    }
+
+    /** Parsed here, once, so no client has to parse a JSON string out of a field. */
+    private FraudFlagResponse describe(FraudFlag flag) {
+        return FraudFlagResponse.from(flag,
+                objectMapper.readValue(flag.getDetails(), FraudFlagDetails.class));
     }
 
     /**
@@ -65,6 +74,6 @@ public class FraudReviewService {
                 "FRAUD_FLAG_" + decision.name(), FraudDecisionEvent.from(reviewed),
                 reviewed.getReviewedAt());
 
-        return FraudFlagResponse.from(reviewed);
+        return describe(reviewed);
     }
 }

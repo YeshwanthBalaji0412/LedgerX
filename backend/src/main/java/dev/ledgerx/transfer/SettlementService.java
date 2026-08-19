@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Moves accepted transfers from PENDING to SETTLED out of band. The money has
@@ -45,5 +46,20 @@ public class SettlementService {
         due.forEach(transfer -> transfer.markSettled(now));
         transferRepository.saveAll(due);
         return due.size();
+    }
+
+    /**
+     * Settles one transfer at a given instant. Exists for backdated history: a
+     * transfer created three months ago should not read as having settled today,
+     * which is what happens when a batch stamps everything with its own clock.
+     */
+    @Transactional
+    public void settleAt(UUID transferId, Instant settledAt) {
+        transferRepository.findById(transferId).ifPresent(transfer -> {
+            if (transfer.getStatus() == TransferStatus.PENDING) {
+                transfer.markSettled(settledAt);
+                transferRepository.saveAndFlush(transfer);
+            }
+        });
     }
 }

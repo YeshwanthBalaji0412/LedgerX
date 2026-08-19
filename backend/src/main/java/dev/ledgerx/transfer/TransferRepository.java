@@ -21,6 +21,38 @@ public interface TransferRepository extends JpaRepository<Transfer, UUID> {
     Page<Transfer> findForAccounts(@Param("accountIds") List<UUID> accountIds, Pageable pageable);
 
     /**
+     * Both parties resolved in one query, so a page of transfers can be rendered
+     * with counterparty names without an N+1 walk through lazy associations.
+     * The joins to users are outer because the treasury has no owner.
+     */
+    @Query("""
+            select new dev.ledgerx.transfer.TransferListItem(
+                t.id, sa.id, da.id, su.email, du.email, sa.accountType, da.accountType,
+                t.amount, t.currency, t.status, t.failureReason, t.createdAt, t.settledAt)
+            from Transfer t
+            join t.sourceAccount sa
+            join t.destinationAccount da
+            left join sa.user su
+            left join da.user du
+            where sa.id in :accountIds or da.id in :accountIds
+            order by t.createdAt desc
+            """)
+    Page<TransferListItem> findListItemsForAccounts(@Param("accountIds") List<UUID> accountIds, Pageable pageable);
+
+    @Query("""
+            select new dev.ledgerx.transfer.TransferListItem(
+                t.id, sa.id, da.id, su.email, du.email, sa.accountType, da.accountType,
+                t.amount, t.currency, t.status, t.failureReason, t.createdAt, t.settledAt)
+            from Transfer t
+            join t.sourceAccount sa
+            join t.destinationAccount da
+            left join sa.user su
+            left join da.user du
+            where t.id = :transferId
+            """)
+    Optional<TransferListItem> findListItem(@Param("transferId") UUID transferId);
+
+    /**
      * Settlement candidates, oldest first and capped, so a backlog is worked
      * through in fair order rather than a single poll trying to load everything.
      */

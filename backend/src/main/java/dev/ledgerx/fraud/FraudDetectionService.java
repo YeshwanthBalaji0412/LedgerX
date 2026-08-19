@@ -129,14 +129,12 @@ public class FraudDetectionService {
     }
 
     private String describe(FraudRule rule, VelocitySnapshot snapshot) {
-        Map<String, Object> details = new LinkedHashMap<>();
-        details.put("rule", rule.name());
-        details.put("windowSeconds", properties.window().toSeconds());
-        details.put("observedTransferCount", snapshot.transferCount());
-        details.put("observedAmountMinorUnits", snapshot.totalAmountMinorUnits());
-        details.put("maxTransfersPerWindow", properties.maxTransfersPerWindow());
-        details.put("maxAmountPerWindow", properties.maxAmountPerWindow());
-        return objectMapper.writeValueAsString(details);
+        return objectMapper.writeValueAsString(FraudFlagDetails.of(
+                rule,
+                properties.window().toSeconds(),
+                snapshot,
+                properties.maxTransfersPerWindow(),
+                properties.maxAmountPerWindow()));
     }
 
 }

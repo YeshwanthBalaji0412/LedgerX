@@ -1,10 +1,11 @@
 package dev.ledgerx.statement.dto;
 
 import dev.ledgerx.statement.Statement;
-
+import dev.ledgerx.statement.StatementLine;
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -21,12 +22,18 @@ public record StatementResponse(
         long closingBalanceMinorUnits,
         long netMovementMinorUnits,
         int entryCount,
-        @Schema(description = "JSON array of entries in the period, each with the running balance after it")
-        String lineItems,
+        @Schema(description = "Entries in the period, each carrying the running balance after it")
+        List<StatementLine> lineItems,
         Instant generatedAt
 ) {
 
-    public static StatementResponse from(Statement statement) {
+    /**
+     * The lines are stored as JSON and parsed here rather than handed over as a
+     * string. Storing them as a document is a persistence decision; obliging
+     * every client to parse a field and hand-type the result would make it a
+     * contract decision too.
+     */
+    public static StatementResponse from(Statement statement, List<StatementLine> lineItems) {
         return new StatementResponse(
                 statement.getId(),
                 statement.getAccount().getId(),
@@ -35,7 +42,7 @@ public record StatementResponse(
                 statement.getClosingBalance(),
                 statement.netMovement(),
                 statement.getEntryCount(),
-                statement.getLineItems(),
+                lineItems,
                 statement.getGeneratedAt());
     }
 }

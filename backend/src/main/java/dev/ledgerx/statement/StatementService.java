@@ -56,7 +56,7 @@ public class StatementService {
         String label = label(period);
 
         return statements.findByAccountIdAndPeriod(accountId, label)
-                .map(StatementResponse::from)
+                .map(this::describe)
                 .orElseGet(() -> generateFirstTime(accountId, period, label));
     }
 
@@ -91,12 +91,12 @@ public class StatementService {
             // constraint decided it; this read runs in a new transaction
             // because the losing one is aborted.
             return statements.findByAccountIdAndPeriod(accountId, label)
-                    .map(StatementResponse::from)
+                    .map(this::describe)
                     .orElseThrow(() -> e);
         }
 
         return statements.findByAccountIdAndPeriod(accountId, label)
-                .map(StatementResponse::from)
+                .map(this::describe)
                 .orElseThrow();
     }
 
@@ -108,15 +108,22 @@ public class StatementService {
     @Transactional(readOnly = true)
     public List<StatementResponse> listFor(UUID accountId) {
         return statements.findAllByAccountIdOrderByPeriodDesc(accountId).stream()
-                .map(StatementResponse::from)
+                .map(this::describe)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public StatementResponse require(UUID accountId, YearMonth period) {
         return statements.findByAccountIdAndPeriod(accountId, label(period))
-                .map(StatementResponse::from)
+                .map(this::describe)
                 .orElseThrow(StatementNotFoundException::new);
+    }
+
+    /** Parsed once here so the stored document never leaves as a raw string. */
+    private StatementResponse describe(dev.ledgerx.statement.Statement statement) {
+        return StatementResponse.from(statement,
+                objectMapper.readValue(statement.getLineItems(),
+                        objectMapper.getTypeFactory().constructCollectionType(List.class, StatementLine.class)));
     }
 
     private List<StatementLine> toLines(List<LedgerEntry> entries, long opening) {

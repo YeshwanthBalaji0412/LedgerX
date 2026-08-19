@@ -55,6 +55,11 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 .logout(logout -> logout.disable())
                 .authorizeHttpRequests(auth -> auth
+                        // Before the blanket /api/auth/** rule below, because
+                        // matching is first-match-wins: /me is the one endpoint
+                        // under that prefix that identifies an existing caller
+                        // rather than producing a token, so it needs one.
+                        .requestMatchers("/api/auth/me").authenticated()
                         .requestMatchers("/api/auth/**").permitAll()
                         // Spring forwards unhandled exceptions to /error. Without
                         // this the forward is itself an unauthenticated request,

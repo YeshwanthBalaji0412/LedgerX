@@ -17,7 +17,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Orchestration only. The single ACID unit lives in {@link TransferWriter}; the
@@ -61,6 +63,7 @@ public class TransferService {
 
         return execute(
                 userId,
+                request.sourceAccountId(),
                 idempotencyKey,
                 hashRequest(request.sourceAccountId(), request.destinationAccountId(), request.amountMinorUnits()),
                 () -> writeWithRetry(
@@ -74,6 +77,7 @@ public class TransferService {
         accountService.requireOwnedBy(accountId, userId);
         return execute(
                 userId,
+                accountId,
                 idempotencyKey,
                 hashRequest(Account.TREASURY_ID, accountId, amount),
                 () -> writeWithRetry(Account.TREASURY_ID, accountId, amount));
@@ -84,6 +88,7 @@ public class TransferService {
         accountService.requireOwnedBy(accountId, userId);
         return execute(
                 userId,
+                accountId,
                 idempotencyKey,
                 hashRequest(accountId, Account.TREASURY_ID, amount),
                 () -> writeWithRetry(accountId, Account.TREASURY_ID, amount));
@@ -91,26 +96,43 @@ public class TransferService {
 
     @Transactional(readOnly = true)
     public Page<TransferResponse> listForUser(UUID userId, int page, int size) {
-        List<UUID> accountIds = accountService.accountsOf(userId).stream().map(Account::getId).toList();
+        Set<UUID> accountIds = accountIdsOf(userId);
         if (accountIds.isEmpty()) {
             return Page.empty();
         }
         Pageable pageable = PageRequest.of(page, Math.min(size, 100));
-        return transferRepository.findForAccounts(accountIds, pageable).map(TransferResponse::from);
+        return transferRepository.findListItemsForAccounts(List.copyOf(accountIds), pageable)
+                .map(item -> TransferResponse.forViewer(item, accountIds));
     }
 
     @Transactional(readOnly = true)
     public TransferResponse requireVisibleTo(UUID transferId, UUID userId) {
-        Transfer transfer = transferRepository.findById(transferId)
+        TransferListItem item = transferRepository.findListItem(transferId)
                 .orElseThrow(TransferNotFoundException::new);
 
-        List<UUID> accountIds = accountService.accountsOf(userId).stream().map(Account::getId).toList();
-        boolean involvesCaller = accountIds.contains(transfer.getSourceAccount().getId())
-                || accountIds.contains(transfer.getDestinationAccount().getId());
+        Set<UUID> accountIds = accountIdsOf(userId);
+        boolean involvesCaller = accountIds.contains(item.sourceAccountId())
+                || accountIds.contains(item.destinationAccountId());
         if (!involvesCaller) {
             throw new TransferNotFoundException();
         }
-        return TransferResponse.from(transfer);
+        return TransferResponse.forViewer(item, accountIds);
+    }
+
+    private Set<UUID> accountIdsOf(UUID userId) {
+        return accountService.accountsOf(userId).stream().map(Account::getId).collect(Collectors.toSet());
+    }
+
+    /**
+     * Re-reads the transfer through the projection so a freshly created one is
+     * described exactly like one fetched later, rather than through a second
+     * mapping that could drift. The viewer's side is known without a lookup:
+     * it is the account the request was authorised against.
+     */
+    private TransferResponse describe(Transfer transfer, UUID viewerAccountId) {
+        return transferRepository.findListItem(transfer.getId())
+                .map(item -> TransferResponse.forViewer(item, Set.of(viewerAccountId)))
+                .orElseThrow(TransferNotFoundException::new);
     }
 
     /**
@@ -118,12 +140,12 @@ public class TransferService {
      * is touched: a retry of an answered request is not new work and should not
      * spend the caller's allowance.
      */
-    private TransferResponse execute(UUID userId, String idempotencyKey, String requestHash,
-                                     java.util.function.Supplier<Transfer> work) {
+    private TransferResponse execute(UUID userId, UUID viewerAccountId, String idempotencyKey,
+                                     String requestHash, java.util.function.Supplier<Transfer> work) {
 
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
             rateLimiter.requireSlot(userId);
-            return TransferResponse.from(work.get());
+            return describe(work.get(), viewerAccountId);
         }
 
         IdempotencyClaim claim = idempotencyStore.claim(idempotencyKey, userId, requestHash);
@@ -135,7 +157,7 @@ public class TransferService {
         rateLimiter.requireSlot(userId);
         try {
             Transfer transfer = work.get();
-            TransferResponse response = TransferResponse.from(transfer);
+            TransferResponse response = describe(transfer, viewerAccountId);
             idempotencyStore.complete(claim.recordId(), 201,
                     objectMapper.writeValueAsString(response), transfer.getId());
             return response;

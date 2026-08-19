@@ -6,11 +6,13 @@ import dev.ledgerx.auth.AuthService;
 import dev.ledgerx.auth.Role;
 import dev.ledgerx.auth.User;
 import dev.ledgerx.auth.UserRepository;
+import dev.ledgerx.fraud.FraudFlagDetails;
 import dev.ledgerx.fraud.FraudFlagRepository;
 import dev.ledgerx.fraud.FraudFlagStatus;
 import dev.ledgerx.fraud.FraudFlagWriter;
 import dev.ledgerx.fraud.FraudReviewService;
 import dev.ledgerx.fraud.FraudRule;
+import dev.ledgerx.fraud.VelocitySnapshot;
 import dev.ledgerx.ledger.Account;
 import dev.ledgerx.ledger.AccountService;
 import dev.ledgerx.ledger.IntegrityReport;
@@ -87,6 +89,7 @@ public class DemoDataSeeder implements ApplicationRunner {
     private final FraudReviewService fraudReviewService;
     private final OutboxPublisher outboxPublisher;
     private final AuditLogRepository auditLog;
+    private final tools.jackson.databind.ObjectMapper objectMapper;
     private final Clock clock;
 
     private final Random random = new Random(RANDOM_SEED);
@@ -103,7 +106,9 @@ public class DemoDataSeeder implements ApplicationRunner {
                           FraudReviewService fraudReviewService,
                           OutboxPublisher outboxPublisher,
                           AuditLogRepository auditLog,
+                          tools.jackson.databind.ObjectMapper objectMapper,
                           Clock clock) {
+        this.objectMapper = objectMapper;
         this.authService = authService;
         this.users = users;
         this.accountService = accountService;
@@ -135,7 +140,7 @@ public class DemoDataSeeder implements ApplicationRunner {
         UUID bobAccount = accountService.openAccount(bobUserId, "USD").getId();
 
         List<Transfer> everything = seedHistory(aliceAccount, bobAccount);
-        settleEverythingDue();
+        settleWithPlausibleLag(everything);
         seedFraudQueue(everything, adminUserId);
         generateStatements(aliceAccount, bobAccount);
         drainOutboxIntoTheAuditTrail();
@@ -217,11 +222,16 @@ public class DemoDataSeeder implements ApplicationRunner {
         return transferWriter.write(from, to, amount, when);
     }
 
-    private void settleEverythingDue() {
-        int settled;
-        do {
-            settled = settlementService.settleDueTransfers();
-        } while (settled > 0);
+    /**
+     * Settles each transfer a plausible interval after it was created, rather
+     * than stamping the whole backdated history with the moment seeding ran. A
+     * May transfer that settled today reads as a three month settlement lag.
+     */
+    private void settleWithPlausibleLag(List<Transfer> transfers) {
+        for (Transfer transfer : transfers) {
+            Instant settledAt = transfer.getCreatedAt().plusSeconds(20 + random.nextInt(600));
+            settlementService.settleAt(transfer.getId(), settledAt);
+        }
     }
 
     /**
@@ -247,11 +257,15 @@ public class DemoDataSeeder implements ApplicationRunner {
         log.info("Fraud queue seeded: 1 open ({}), 1 cleared, 1 confirmed", open);
     }
 
+    /**
+     * Seeded flags carry the same typed detail shape the detector produces, so
+     * the review screen is not looking at demo data that is shaped differently
+     * from the real thing.
+     */
     private UUID raise(Transfer transfer, FraudRule rule) {
-        String details = """
-                {"rule":"%s","seeded":true,"note":"demo data for the review queue"}"""
-                .formatted(rule.name());
-        return fraudFlagWriter.raise(transfer.getId(), rule, details);
+        FraudFlagDetails details = FraudFlagDetails.of(
+                rule, 60, new VelocitySnapshot(6, transfer.getAmount() * 6), 5, 500_000);
+        return fraudFlagWriter.raise(transfer.getId(), rule, objectMapper.writeValueAsString(details));
     }
 
     private void generateStatements(UUID aliceAccount, UUID bobAccount) {
