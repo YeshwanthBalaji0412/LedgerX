@@ -45,10 +45,14 @@ public class TransferRateLimiter {
     private final Clock clock;
     private final RedisScript<Long> admitScript;
 
-    public TransferRateLimiter(StringRedisTemplate redis, TransferProperties properties, Clock clock) {
+    private final dev.ledgerx.api.LedgerMetrics metrics;
+
+    public TransferRateLimiter(StringRedisTemplate redis, TransferProperties properties, Clock clock,
+                               dev.ledgerx.api.LedgerMetrics metrics) {
         this.redis = redis;
         this.properties = properties;
         this.clock = clock;
+        this.metrics = metrics;
         this.admitScript = new DefaultRedisScript<>(SCRIPT, Long.class);
     }
 
@@ -68,6 +72,7 @@ public class TransferRateLimiter {
                 UUID.randomUUID().toString());
 
         if (admitted == null || admitted == 0L) {
+            metrics.rateLimitRejected();
             throw new RateLimitExceededException();
         }
     }

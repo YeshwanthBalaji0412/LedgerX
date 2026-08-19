@@ -2,6 +2,8 @@ package dev.ledgerx.statement;
 
 import dev.ledgerx.ledger.AccountService;
 import dev.ledgerx.statement.dto.StatementResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,6 +18,7 @@ import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.UUID;
 
+@Tag(name = "Statements", description = "Closed-period statements derived from ledger entries")
 @RestController
 @RequestMapping("/api/accounts/{accountId}/statements")
 public class StatementController {
@@ -28,12 +31,14 @@ public class StatementController {
         this.accountService = accountService;
     }
 
+    @Operation(summary = "List statements", description = "Newest period first.")
     @GetMapping
     List<StatementResponse> list(@AuthenticationPrincipal UUID userId, @PathVariable UUID accountId) {
         accountService.requireOwnedBy(accountId, userId);
         return statementService.listFor(accountId);
     }
 
+    @Operation(summary = "Fetch one statement", description = "Period is YYYY-MM, for example 2026-05.")
     @GetMapping("/{period}")
     StatementResponse one(@AuthenticationPrincipal UUID userId,
                           @PathVariable UUID accountId,
@@ -47,6 +52,15 @@ public class StatementController {
      * caller can tell whether this request generated it. The figures are
      * identical either way: regeneration reads, it does not recompute.
      */
+    @Operation(summary = "Generate a statement",
+            description = """
+                    Derives opening and closing balances from ledger entries, never from a cached
+                    balance, so the figures are provable from primary records.
+
+                    Statements are immutable once issued and generation is idempotent: asking
+                    again returns the stored figures unchanged rather than recomputing them, even
+                    if entries have since landed in that period. Only closed periods can be
+                    generated; a month still in progress returns 409.""")
     @PostMapping("/{period}")
     ResponseEntity<StatementResponse> generate(@AuthenticationPrincipal UUID userId,
                                                @PathVariable UUID accountId,

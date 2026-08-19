@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -51,6 +52,22 @@ public class LedgerService {
                                               UUID creditAccountId,
                                               long amount,
                                               String currency) {
+        return postBalancedPair(transferId, debitAccountId, creditAccountId, amount, currency, clock.instant());
+    }
+
+    /**
+     * As above, but with the instant supplied. Seeding historical activity uses
+     * this so backdated data is written by exactly this method rather than
+     * around it: the balanced pair, the cached balance update and the version
+     * check are all still the same code, and only the timestamp differs.
+     */
+    @Transactional
+    public List<LedgerEntry> postBalancedPair(UUID transferId,
+                                              UUID debitAccountId,
+                                              UUID creditAccountId,
+                                              long amount,
+                                              String currency,
+                                              Instant occurredAt) {
 
         if (amount <= 0) {
             throw new LedgerException("Amount must be a positive number of minor units");
@@ -67,8 +84,8 @@ public class LedgerService {
         requireUsable(debitAccount, currency);
         requireUsable(creditAccount, currency);
 
-        LedgerEntry debit = new LedgerEntry(transferId, debitAccount, Direction.DEBIT, amount, currency);
-        LedgerEntry credit = new LedgerEntry(transferId, creditAccount, Direction.CREDIT, amount, currency);
+        LedgerEntry debit = new LedgerEntry(transferId, debitAccount, Direction.DEBIT, amount, currency, occurredAt);
+        LedgerEntry credit = new LedgerEntry(transferId, creditAccount, Direction.CREDIT, amount, currency, occurredAt);
         ledgerEntryRepository.saveAll(List.of(debit, credit));
 
         // The cached figures are derived from the entries just written, so they

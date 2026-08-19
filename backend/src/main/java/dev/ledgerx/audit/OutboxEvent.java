@@ -43,8 +43,18 @@ public class OutboxEvent {
     @Column(nullable = false, updatable = false)
     private String payload;
 
+    /** When the row was written. Drives publication ordering. */
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    /**
+     * When the fact this describes actually happened. Equal to
+     * {@code createdAt} for live traffic, and deliberately not for backdated or
+     * replayed events, so a consumer reasoning about time reads the domain's
+     * clock rather than the publisher's.
+     */
+    @Column(name = "occurred_at", nullable = false, updatable = false)
+    private Instant occurredAt;
 
     @Column(name = "published_at")
     private Instant publishedAt;
@@ -55,17 +65,22 @@ public class OutboxEvent {
     @Column(name = "last_error", length = 500)
     private String lastError;
 
-    public OutboxEvent(String aggregateType, UUID aggregateId, String eventType, String payload) {
+    public OutboxEvent(String aggregateType, UUID aggregateId, String eventType,
+                       String payload, Instant occurredAt) {
         this.aggregateType = aggregateType;
         this.aggregateId = aggregateId;
         this.eventType = eventType;
         this.payload = payload;
+        this.occurredAt = occurredAt;
     }
 
     @PrePersist
     void onCreate() {
         if (createdAt == null) {
             createdAt = Instant.now();
+        }
+        if (occurredAt == null) {
+            occurredAt = createdAt;
         }
     }
 

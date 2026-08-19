@@ -35,7 +35,10 @@ public class FraudDetectionConsumer {
         if (!TRANSFER_CREATED.equals(envelope.eventType())) {
             return;
         }
-        fraudDetection.evaluate(envelope.aggregateId()).forEach(rule ->
+        // The envelope carries when the transfer happened; using that rather
+        // than the consumption time keeps a replayed backlog from reading as a
+        // burst that never occurred.
+        fraudDetection.evaluate(envelope.aggregateId(), envelope.occurredAt()).forEach(rule ->
                 log.info("Transfer {} flagged by {}", envelope.aggregateId(), rule));
     }
 }

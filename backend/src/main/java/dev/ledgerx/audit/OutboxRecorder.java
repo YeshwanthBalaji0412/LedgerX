@@ -3,6 +3,7 @@ package dev.ledgerx.audit;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -23,8 +24,15 @@ public class OutboxRecorder {
         this.objectMapper = objectMapper;
     }
 
-    public OutboxEvent record(String aggregateType, UUID aggregateId, String eventType, Object payload) {
-        return outbox.save(new OutboxEvent(
-                aggregateType, aggregateId, eventType, objectMapper.writeValueAsString(payload)));
+    /**
+     * @param occurredAt when the fact happened, which is not always now: a
+     *                   backdated movement must publish an event that says so,
+     *                   or any consumer reasoning about time sees the
+     *                   publisher's clock instead of the domain's.
+     */
+    public OutboxEvent record(String aggregateType, UUID aggregateId, String eventType,
+                              Object payload, Instant occurredAt) {
+        return outbox.save(new OutboxEvent(aggregateType, aggregateId, eventType,
+                objectMapper.writeValueAsString(payload), occurredAt));
     }
 }

@@ -62,7 +62,8 @@ public class FraudReviewService {
         // transfer path uses. If the decision commits the event commits with it,
         // and if the decision is refused there is no event to explain away.
         outboxRecorder.record("FRAUD_FLAG", reviewed.getId(),
-                "FRAUD_FLAG_" + decision.name(), FraudDecisionEvent.from(reviewed));
+                "FRAUD_FLAG_" + decision.name(), FraudDecisionEvent.from(reviewed),
+                reviewed.getReviewedAt());
 
         return FraudFlagResponse.from(reviewed);
     }

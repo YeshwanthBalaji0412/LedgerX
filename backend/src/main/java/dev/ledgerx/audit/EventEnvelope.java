@@ -23,7 +23,7 @@ public record EventEnvelope(
                 event.getAggregateType(),
                 event.getAggregateId(),
                 event.getEventType(),
-                event.getCreatedAt(),
+                event.getOccurredAt(),
                 event.getPayload());
     }
 }

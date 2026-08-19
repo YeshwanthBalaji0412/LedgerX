@@ -62,6 +62,17 @@ public class SecurityConfig {
                         // every unmapped failure was masked as an auth problem.
                         .requestMatchers("/error").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
+                        // The API description only: paths, schemas and status
+                        // codes, no data and no way to invoke anything. Every
+                        // endpoint it documents still needs a token. Turning it
+                        // off for an environment is a springdoc flag rather than
+                        // a security change, so the two never drift apart.
+                        .requestMatchers("/v3/api-docs", "/v3/api-docs/**",
+                                "/swagger-ui.html", "/swagger-ui/**").permitAll()
+                        // Metrics name internal behaviour and volumes, so they
+                        // are operator data rather than something any signed-in
+                        // customer should read.
+                        .requestMatchers("/actuator/metrics", "/actuator/metrics/**").hasRole("ADMIN")
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling

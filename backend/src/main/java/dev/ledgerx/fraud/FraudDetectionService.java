@@ -9,6 +9,8 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,13 +38,19 @@ public class FraudDetectionService {
     private final FraudVelocityTracker velocity;
     private final FraudProperties properties;
     private final ObjectMapper objectMapper;
+    private final Clock clock;
+    private final dev.ledgerx.api.LedgerMetrics metrics;
 
     public FraudDetectionService(TransferRepository transfers,
                                  FraudFlagRepository flags,
                                  FraudFlagWriter writer,
                                  FraudVelocityTracker velocity,
                                  FraudProperties properties,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper,
+                                 Clock clock,
+                                 dev.ledgerx.api.LedgerMetrics metrics) {
+        this.clock = clock;
+        this.metrics = metrics;
         this.transfers = transfers;
         this.flags = flags;
         this.writer = writer;
@@ -58,6 +66,17 @@ public class FraudDetectionService {
      * transaction that hit the constraint.
      */
     public List<FraudRule> evaluate(UUID transferId) {
+        return evaluate(transferId, clock.instant());
+    }
+
+    /**
+     * Velocity is measured against when the transfer happened, not when the
+     * event was consumed. Those coincide for live traffic, but they diverge the
+     * moment anything is replayed: a backlog drained after an outage, a consumer
+     * catching up, or seeded history would otherwise all land in one window and
+     * flag transfers that were minutes apart in reality.
+     */
+    public List<FraudRule> evaluate(UUID transferId, Instant observedAt) {
         Optional<TransferVelocityFacts> maybeFacts = transfers.findVelocityFacts(transferId);
         if (maybeFacts.isEmpty() || !maybeFacts.get().isAttributableToAUser()) {
             // A treasury funded movement has no user to attribute velocity to.
@@ -66,7 +85,7 @@ public class FraudDetectionService {
 
         TransferVelocityFacts facts = maybeFacts.get();
         VelocitySnapshot snapshot =
-                velocity.observe(facts.ownerId(), transferId, facts.amountMinorUnits());
+                velocity.observeAt(facts.ownerId(), transferId, facts.amountMinorUnits(), observedAt);
 
         List<FraudRule> tripped = new ArrayList<>();
         if (snapshot.transferCount() > properties.maxTransfersPerWindow()) {
@@ -94,6 +113,7 @@ public class FraudDetectionService {
             }
             try {
                 writer.raise(transferId, rule, describe(rule, snapshot));
+                metrics.fraudFlagRaised(rule.name());
                 tripped.add(rule);
                 return;
             } catch (DataIntegrityViolationException e) {

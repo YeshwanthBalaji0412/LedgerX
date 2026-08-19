@@ -66,12 +66,14 @@ public class Transfer {
     @Column(name = "settled_at")
     private Instant settledAt;
 
-    public Transfer(Account sourceAccount, Account destinationAccount, long amount, String currency) {
+    public Transfer(Account sourceAccount, Account destinationAccount, long amount,
+                    String currency, Instant occurredAt) {
         this.sourceAccount = sourceAccount;
         this.destinationAccount = destinationAccount;
         this.amount = amount;
         this.currency = currency;
         this.status = TransferStatus.PENDING;
+        this.createdAt = occurredAt;
     }
 
     @PrePersist

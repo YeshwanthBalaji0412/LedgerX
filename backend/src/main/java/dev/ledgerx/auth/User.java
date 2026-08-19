@@ -43,4 +43,14 @@ public class User {
             createdAt = Instant.now();
         }
     }
+
+    /**
+     * Role changes exist as a domain operation but deliberately have no endpoint
+     * behind them: nothing a request can reach grants a role, so privilege
+     * escalation is not something the API surface can be talked into. Used by
+     * demo seeding, and the place an operator tool would call in future.
+     */
+    public void assignRole(Role role) {
+        this.role = role;
+    }
 }

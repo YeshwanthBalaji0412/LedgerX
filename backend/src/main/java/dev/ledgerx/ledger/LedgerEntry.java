@@ -54,14 +54,23 @@ public class LedgerEntry {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public LedgerEntry(UUID transferId, Account account, Direction direction, long amount, String currency) {
+    /**
+     * The caller supplies the instant. Entries are append-only, so a timestamp
+     * assigned here can never be corrected afterwards — which means the service
+     * layer, which owns the clock, has to be the one that decides it. That is
+     * also what makes backdated history possible without bypassing this class.
+     */
+    public LedgerEntry(UUID transferId, Account account, Direction direction,
+                       long amount, String currency, Instant occurredAt) {
         this.transferId = transferId;
         this.account = account;
         this.direction = direction;
         this.amount = amount;
         this.currency = currency;
+        this.createdAt = occurredAt;
     }
 
+    /** Fallback only: a caller that supplied an instant has already set it. */
     @PrePersist
     void onCreate() {
         if (createdAt == null) {

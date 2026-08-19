@@ -34,6 +34,7 @@ public class TransferService {
     private final TransferRateLimiter rateLimiter;
     private final TransferProperties properties;
     private final ObjectMapper objectMapper;
+    private final dev.ledgerx.api.LedgerMetrics metrics;
 
     public TransferService(TransferWriter writer,
                            TransferRepository transferRepository,
@@ -41,7 +42,9 @@ public class TransferService {
                            AccountService accountService,
                            TransferRateLimiter rateLimiter,
                            TransferProperties properties,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           dev.ledgerx.api.LedgerMetrics metrics) {
+        this.metrics = metrics;
         this.writer = writer;
         this.transferRepository = transferRepository;
         this.idempotencyStore = idempotencyStore;
@@ -125,6 +128,7 @@ public class TransferService {
 
         IdempotencyClaim claim = idempotencyStore.claim(idempotencyKey, userId, requestHash);
         if (claim.isReplay()) {
+            metrics.idempotencyReplay();
             return objectMapper.readValue(claim.replayBody(), TransferResponse.class);
         }
 
@@ -154,8 +158,11 @@ public class TransferService {
 
         for (int attempt = 0; attempt <= properties.maxOptimisticRetries(); attempt++) {
             try {
-                return writer.write(sourceAccountId, destinationAccountId, amount);
+                Transfer written = writer.write(sourceAccountId, destinationAccountId, amount);
+                metrics.transferRecorded(written.getStatus().name());
+                return written;
             } catch (OptimisticLockingFailureException e) {
+                metrics.optimisticRetry();
                 lastFailure = e;
             }
         }

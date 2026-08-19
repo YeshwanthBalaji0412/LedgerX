@@ -80,6 +80,69 @@ npm install
 npm run dev
 ```
 
+## Demo data
+
+Start the backend with the `seed` profile and every feature has something to
+show — three closed months of history plus current-month activity, statements,
+a populated audit trail, and a fraud queue with one flag in each state:
+
+```bash
+docker compose up -d
+cd backend
+./mvnw spring-boot:run -Dspring-boot.run.profiles=seed
+```
+
+| Sign in as | Password | |
+|---|---|---|
+| `alice@ledgerx.dev` | `demo-password-123` | demo user with history |
+| `bob@ledgerx.dev` | `demo-password-123` | the other side of those transfers |
+| `admin@ledgerx.dev` | `demo-password-123` | ADMIN: fraud queue, integrity check, metrics |
+
+Seeding is opt-in, so it never runs in tests or in an environment that does not
+ask for it, and re-running it is a no-op rather than a second helping of
+history. Every seeded movement goes through the same balanced-entry path the
+API uses — nothing inserts ledger rows directly — and the seeder runs the
+integrity check at the end, refusing to finish starting if the books do not
+balance.
+
+## API documentation
+
+With the app running, Swagger UI is at
+[localhost:8080/swagger-ui/index.html](http://localhost:8080/swagger-ui/index.html)
+and the raw document at `/v3/api-docs`. Sign in through `POST /api/auth/login`,
+paste the access token into **Authorize**, and every endpoint becomes callable
+from the page.
+
+Both paths are open without a token because they serve only the API
+*description* — paths, schemas and status codes, no data and no way to invoke
+anything. Everything they document still requires a token. To close them in an
+environment that should not expose them, set `springdoc.api-docs.enabled=false`
+and `springdoc.swagger-ui.enabled=false`; the endpoints then stop existing, so
+the security rules and the exposure decision cannot drift apart.
+
+## Observability
+
+`/actuator/health` and `/actuator/info` are public; `/actuator/metrics`
+requires ADMIN, since metrics describe internal behaviour and volumes.
+
+Beyond the defaults, these are the counters worth watching, all covering things
+that are invisible from the outside because they succeeded or were absorbed:
+
+| Metric | What it tells you |
+|---|---|
+| `ledgerx.transfers{status}` | Volume by lifecycle state; a rise in FLAGGED or FAILED stands alone |
+| `ledgerx.transfer.optimistic.retries` | Contention on account balances, before it becomes a 409 |
+| `ledgerx.idempotency.replays` | Retries that cost nothing, which is the feature working |
+| `ledgerx.transfer.ratelimit.rejections` | Callers hitting the window |
+| `ledgerx.fraud.flags{rule}` | Flags raised, split by rule |
+| `ledgerx.outbox.pending` | Unpublished events: the backlog gauge |
+
+Health includes an `outbox` indicator that goes DOWN past
+`ledgerx.outbox.lag-threshold` (default 250). Outbox lag is the failure that is
+invisible everywhere else: writes keep committing and the API stays green while
+events quietly stop reaching Kafka, leaving the audit trail and fraud detection
+running blind.
+
 ## Scope limits
 
 This is a portfolio system, not a payment processor. The limits below are
