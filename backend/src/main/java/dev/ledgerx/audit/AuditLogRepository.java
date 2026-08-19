@@ -14,4 +14,6 @@ public interface AuditLogRepository extends JpaRepository<AuditLogEntry, UUID> {
     List<AuditLogEntry> findAllByAggregateId(UUID aggregateId);
 
     Page<AuditLogEntry> findAllByOrderByRecordedAtDesc(Pageable pageable);
+
+    Page<AuditLogEntry> findAllByAggregateTypeOrderByRecordedAtDesc(String aggregateType, Pageable pageable);
 }
