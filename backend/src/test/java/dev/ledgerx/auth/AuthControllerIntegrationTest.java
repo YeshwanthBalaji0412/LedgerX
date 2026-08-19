@@ -5,6 +5,8 @@ import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -195,14 +197,50 @@ class AuthControllerIntegrationTest {
      * Points at a route that really exists, so a pass means the ADMIN rule
      * rejected the request rather than the path simply being unmapped.
      */
-    @Test
-    void aUserTokenIsForbiddenFromAdminRoutes() throws Exception {
-        String accessToken = register("plain@ledgerx.dev").get("accessToken").asString();
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/admin/ledger/integrity",
+            "/api/admin/fraud-flags",
+            "/api/admin/audit-log",
+            "/actuator/metrics"
+    })
+    void aUserTokenIsForbiddenFromAdminRoutes(String path) throws Exception {
+        String accessToken = register("plain-" + UUID.randomUUID() + "@ledgerx.dev")
+                .get("accessToken").asString();
 
-        mockMvc.perform(get("/api/admin/ledger/integrity")
-                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
+        mockMvc.perform(get(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error").value("ACCESS_DENIED"));
+    }
+
+    /**
+     * The counterpart the rejection cases need: every one of those paths is a
+     * route that really exists, so a 403 means the role rule refused the
+     * request rather than the path simply being unmapped. Without this an
+     * admin endpoint could be deleted entirely and the tests above would still
+     * pass, reporting security on a route that no longer serves anything.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "/api/admin/ledger/integrity",
+            "/api/admin/fraud-flags",
+            "/api/admin/audit-log",
+            "/actuator/metrics"
+    })
+    void anAdminTokenReachesEveryOneOfThoseRoutes(String path) throws Exception {
+        String email = "boss-" + UUID.randomUUID() + "@ledgerx.dev";
+        register(email);
+
+        // No endpoint grants a role, deliberately, so the promotion happens
+        // through the domain rather than through an escalation path in the API.
+        User admin = userRepository.findByEmail(email).orElseThrow();
+        admin.assignRole(Role.ADMIN);
+        userRepository.saveAndFlush(admin);
+
+        String adminToken = login(email).get("accessToken").asString();
+
+        mockMvc.perform(get(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + adminToken))
+                .andExpect(status().isOk());
     }
 
     /**
@@ -254,6 +292,16 @@ class AuthControllerIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(email, "correct horse battery")))
                 .andExpect(status().isCreated())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString());
+    }
+
+    /** Re-issues a token after a role change, since the old one still carries the old role. */
+    private JsonNode login(String email) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(email, "correct horse battery")))
+                .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString());
     }

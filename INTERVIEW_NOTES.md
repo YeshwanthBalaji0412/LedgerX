@@ -21,12 +21,12 @@
 - Confirmed Boot 4 doesn't change the Java 21 decision or any other locked stack choice.
 
 ## Gaps to close
-- (log anything that confuses you here as we build)
+- RAG assistant, Playwright E2E, a coverage gate, and AWS deployment config remain. Tracked in the README status list.
 
 ## Additional Day 0 decisions
 - Pinned JAVA_HOME to Temurin 21 explicitly via shell profile, even though a newer JDK (25) was also installed — real teams pin JDK versions per project rather than relying on whatever the machine defaults to.
 - Chose a monorepo (backend/ + frontend/ in one repo) over two separate repos — simpler to showcase as one coherent project, one README, one CI pipeline, at the cost of slightly coupled deploy pipelines later.
-- CI's frontend job currently skips `npm run lint` deliberately — a fresh Vite scaffold's default lint config isn't meaningful until real code exists to lint against; will add back once the frontend has actual components.
+- CI's frontend job initially skipped `npm run lint` deliberately — a fresh Vite scaffold's default lint config isn't meaningful until real code exists to lint against. Added back in Phase 8 alongside `npm run test`, which had never been wired into CI at all: the job built the frontend without ever running its tests, so a hundred-plus passing tests were gating nothing.
 
 ## Day 0 continued — frontend styling stack
 - Vite's react-ts scaffold defaulted to React 19.2.8, not React 18 as originally planned. Confirmed React 19 is stable and fully supported by every other planned library (TanStack Query, RHF, Zod, Router, shadcn/ui, Recharts) — no downgrade needed, locked stack updated to reflect reality.
@@ -147,3 +147,47 @@ The tempting fix is a grace window on the server — accept a token that was rev
 So the fix belongs on the side that has the problem. Refreshes are single-flighted within a tab through one shared promise, and coordinated across tabs with a `BroadcastChannel`, so exactly one refresh is ever in flight for a user. Worth noting that single-flighting here is not a performance optimisation, which is how it is usually presented — a second concurrent refresh with the same token *is* reuse, so it is a correctness requirement.
 
 The general lesson: when a sound backend invariant makes the client harder to build, the answer is usually to meet the constraint rather than soften the invariant, and to be able to say why.
+
+## Phase 8 — Building the frontend
+
+### Tests that pass for the wrong reason
+The most useful habit in this phase was deliberately breaking the implementation to confirm the test noticed. It caught real false greens that review would not have.
+
+The clearest case was the optimistic transfer update. Two mutations — deleting the `onError` rollback entirely, and appending the server's row instead of replacing the optimistic one by id — both left the suite green. The tests were not measuring optimistic handling at all: `onSettled` invalidated the queries, the refetch repaired the screen, and the assertions ran after that. The fix was to freeze the list refetch in the harness so the server answers no further reads after the initial load. With the refetch held, the same mutations failed immediately.
+
+The general shape: an assertion made after a self-healing mechanism has run measures the healing, not the thing under test. Any test whose subject is "state between two events" has to hold the second event open.
+
+The same pattern showed up twice more. A guard test held "still resolving" open with a 150 ms delay and asserted at 60 ms, which passed alone and failed under full-suite load; it now holds the refresh open behind a gate the test releases. And a boundary fixture meant to throw once had its flag spent before the boundary ever saw it, because React retries a render synchronously after a concurrent throw.
+
+### Optimistic updates need an identity, not a position
+Inserting an optimistic row and then appending the server's response produces a duplicate for one frame. Reconciling by id — the optimistic row carries `optimistic:${idempotencyKey}` and is replaced by id on success — is what makes the transition invisible. Position-based reconciliation breaks the moment anything else lands concurrently.
+
+### Single-flight refresh is correctness, not performance
+Usually presented as an optimisation: don't fire ten refreshes when ten requests expire together. Here it is a correctness requirement, because refresh tokens are single-use and a second concurrent refresh *is* reuse, which revokes the whole session family. One shared promise per tab, and a `BroadcastChannel` across tabs.
+
+The tempting alternative was a server-side grace window accepting a recently-revoked token. That trades a real security property for client convenience, and the whole value of reuse detection is that a spent token is *always* treated as theft. The constraint was met on the side that had the problem.
+
+### Absence is a state worth designing
+The current month has no statement, and that is correct rather than missing: a statement is immutable, so issuing one for a month that can still receive entries would record figures nothing could later correct. The screen says "this period is still open" and offers live activity in its place, shaped deliberately unlike an issued statement — no opening/closing figures, no generate action.
+
+This is why the period list is derived from the account's own lifetime rather than from the statements that happen to exist. Listing only what exists would make both interesting states invisible: the month still running, and a closed month nobody has generated yet.
+
+### A conflict is not a rejected form
+Two admins reviewing the same fraud flag is the interesting case. The server refuses the second decision with a 409, which is right — a flag leaves OPEN exactly once. The client deliberately does *not* optimistically apply a review: showing a verdict the server is about to reject would mean the loser briefly sees their own decision recorded when it never was.
+
+The subtler part is that invalidation belongs in `onSettled` rather than `onSuccess`. *Losing* the race is precisely when this tab's queue is stale, so the failure path is the one that most needs the refetch.
+
+### Where an error boundary belongs
+At the root it catches everything and takes the navigation down with it, leaving a user stranded on a blank page. Inside the layout, around the outlet, a screen that throws costs the user that screen and nothing else. Both exist: the inner one for pages, an outer one for throws above the layout.
+
+Two details make the retry more than a button that redraws the same crash. It drops the cached data first, so a bad response is refetched rather than replayed; and the boundary is keyed by route, so navigating away clears it rather than leaving an error stuck over a screen that was never broken.
+
+### Some properties no unit test can see
+Lazily importing Recharts moved 352 kB (103 kB gzipped) out of the entry chunk. Reverting it to a static import keeps all 121 tests green and every screen working — only the download gets worse, which is invisible in review and invisible in CI.
+
+So it is checked against the built output instead: a script that fails if the library lands in the entry chunk, gets duplicated across chunks, or the entry exceeds a gzip ceiling. Worth generalising — a property that no test can observe needs a different kind of check, not a promise to remember.
+
+### Defence in depth, measured
+Admin routes enforce the role twice: a URL rule in the filter chain and `@PreAuthorize` on the controller. Removing either one alone leaves every `/api/admin/**` test passing, which is the point of having both. Removing both makes them fail.
+
+That exercise also surfaced an asymmetry worth knowing: `/actuator/metrics` has only the URL rule, because it is a framework-provided endpoint with no controller to annotate. It is protected once, not twice, and no amount of convention fixes that.

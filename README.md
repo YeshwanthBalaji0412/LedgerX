@@ -26,13 +26,14 @@ guarantee correctness and auditability. Full writeup in `INTERVIEW_NOTES.md`.
 
 **Backend:** Java 21, Spring Boot 4.1.0, Spring Data JPA/Hibernate, Spring
 Security (JWT, refresh rotation, RBAC), Kafka, Redis, PostgreSQL + Flyway,
-Spring AI (RAG, planned)
+springdoc-openapi, Spring AI (RAG — planned)
 
-**Frontend:** React 19 + TypeScript (Vite), TanStack Query, React Hook Form +
-Zod, React Router, Tailwind CSS + shadcn/ui, Recharts (planned)
+**Frontend:** React 19 + TypeScript (Vite 8), TanStack Query v5, React Hook
+Form + Zod 4, React Router 7, Tailwind CSS v4 + shadcn/ui, Recharts
 
-**Testing:** JUnit 5, Mockito, Testcontainers (real Postgres/Redis/Kafka in
-tests), React Testing Library, Playwright (planned)
+**Testing:** JUnit 6, Mockito, AssertJ, Testcontainers (real
+Postgres/Redis/Kafka in tests), Vitest + React Testing Library, Playwright
+(planned)
 
 **Infra:** Docker Compose (local dev), GitHub Actions CI, AWS deployment
 (planned), Spring Actuator
@@ -46,20 +47,26 @@ tests), React Testing Library, Playwright (planned)
 
 ## Project status
 
-🚧 **Early build — environment and scaffolding complete, core features not
-yet implemented.**
+**Core platform complete and tested end to end.** 234 tests: 113 backend
+(JUnit + Testcontainers against real Postgres, Redis and Kafka) and 121
+frontend (Vitest + React Testing Library).
 
 - [x] Docker Compose infra: Postgres (with pgvector), Redis, Kafka (KRaft mode)
-- [x] Spring Boot backend boots, connects to Postgres, Flyway migrations apply
-- [x] Vite + React + TypeScript frontend scaffold
-- [x] GitHub Actions CI (backend build+test, frontend build)
-- [ ] Auth (JWT, refresh rotation, roles) — next up
-- [ ] Ledger core (accounts, balanced entries, derived balances)
-- [ ] Transfer lifecycle with idempotency + optimistic locking
-- [ ] Kafka outbox + audit trail
-- [ ] Frontend: protected routes, transfer UI with optimistic updates
-- [ ] Fraud velocity flags, statements, Recharts, RAG assistant (trim-layer,
-      built after the core is complete)
+- [x] Auth: JWT, single-use refresh rotation with reuse detection, RBAC
+- [x] Ledger core: accounts, balanced debit/credit entries, derived balances,
+      append-only enforced by database triggers
+- [x] Transfer lifecycle: claim-first idempotency, optimistic locking,
+      rate limiting, settlement
+- [x] Transactional outbox → Kafka → immutable audit trail
+- [x] Fraud velocity flags with an admin review queue
+- [x] Monthly statements derived from ledger entries, immutable once issued
+- [x] Observability: custom metrics, outbox-lag health indicator, OpenAPI docs
+- [x] Demo seeding through the real service path, gated by the integrity check
+- [x] Frontend: protected routes, dashboard, transfers with optimistic updates
+      and rollback, statements, admin fraud queue and audit log
+- [x] GitHub Actions CI: backend verify; frontend lint, test, build, bundle check
+- [ ] RAG assistant (Spring AI + pgvector), scoped per user
+- [ ] Playwright E2E, coverage gate, AWS deployment config
 
 ## Running locally
 
@@ -79,6 +86,30 @@ cd frontend
 npm install
 npm run dev
 ```
+
+Vite proxies `/api` to `localhost:8080`, so the app is same-origin in
+development and no environment file is needed. Setting `VITE_API_BASE_URL`
+points the client straight at the backend instead, which is how the CORS
+configuration gets exercised deliberately rather than discovered on a
+split-origin deployment.
+
+## Tests
+
+```bash
+cd backend && ./mvnw verify      # 113 tests; starts real Postgres/Redis/Kafka containers
+cd frontend && npm run test      # 121 tests
+cd frontend && npm run check:bundle   # after npm run build
+```
+
+Backend tests run against real containers rather than an in-memory database,
+because most of what is worth testing here — append-only triggers, unique
+constraints under concurrency, transaction rollback semantics — is behaviour
+Postgres provides and a substitute does not.
+
+`check:bundle` inspects the built output and fails if Recharts ends up in the
+entry chunk. Bundle shape is invisible to unit tests: replacing the lazy chart
+import with a static one keeps every test green and only makes the download
+worse.
 
 ## Demo data
 
@@ -186,39 +217,34 @@ docker compose exec -T postgres psql -U ledgerx -d ledgerx \
 
 ```
 LedgerX/
-├── .github/
-│   └── workflows/
-│       └── ci.yml              # Backend build+test, frontend build
-├── backend/                    # Spring Boot API (Java 21, Boot 4.1.0)
-│   ├── .mvn/wrapper/
-│   ├── mvnw / mvnw.cmd
-│   ├── pom.xml
+├── .github/workflows/ci.yml     # Backend verify; frontend lint, test, build, bundle check
+├── backend/                     # Spring Boot API (Java 21, Boot 4.1.0)
 │   └── src/
 │       ├── main/
 │       │   ├── java/dev/ledgerx/
-│       │   │   └── LedgerxApplication.java
+│       │   │   ├── api/         # Cross-cutting HTTP concerns: one error shape, OpenAPI config
+│       │   │   ├── audit/       # Outbox publisher, Kafka consumer, append-only audit trail
+│       │   │   ├── auth/        # JWT, refresh rotation with reuse detection, security config
+│       │   │   ├── fraud/       # Velocity rules, flags, admin review
+│       │   │   ├── ledger/      # Accounts, balanced entries, derived balances, integrity check
+│       │   │   ├── seed/        # Demo data, opt-in by profile, through the real service path
+│       │   │   ├── statement/   # Monthly statements, immutable once issued
+│       │   │   └── transfer/    # Transfer lifecycle, idempotency, settlement, rate limiting
 │       │   └── resources/
 │       │       ├── application.yml
-│       │       └── db/migration/
-│       │           └── V1__init.sql   # Flyway: schema_sanity check table
-│       └── test/
-│           └── java/dev/ledgerx/
-│               ├── LedgerxApplicationTests.java
-│               └── TestcontainersConfiguration.java  # Postgres/Redis/Kafka test containers
-├── frontend/                   # React + TypeScript (Vite)
-│   ├── public/
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── main.tsx
-│   │   └── index.css
-│   ├── components.json         # shadcn/ui config
-│   ├── index.html
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-├── docker-compose.yml          # Postgres (pgvector), Redis, Kafka (KRaft)
-├── INTERVIEW_NOTES.md          # Architecture decisions, logged day by day
+│       │       └── db/migration/    # Flyway V1–V9; schema is owned here, never by Hibernate
+│       └── test/java/dev/ledgerx/   # Integration tests on real containers, mirroring the packages
+├── frontend/                    # React 19 + TypeScript (Vite 8)
+│   ├── scripts/check-bundle.mjs # Fails the build if Recharts creeps into the entry chunk
+│   └── src/
+│       ├── auth/                # Session provider, route guards
+│       ├── components/          # Layout, error boundary, shared pieces, shadcn/ui primitives
+│       ├── lib/api/             # Typed client, single-flight refresh, queries and mutations
+│       ├── routes/              # dashboard, transfers, statements, admin, auth
+│       └── test/                # Render helpers and setup
+├── docker/postgres/init/        # Least-privilege app role, applied on a fresh volume
+├── docker-compose.yml           # Postgres (pgvector), Redis, Kafka (KRaft)
+├── INTERVIEW_NOTES.md           # Architecture decisions, logged as they were made
 ├── LICENSE
-├── README.md
-└── .gitignore
+└── README.md
 ```

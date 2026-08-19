@@ -1,6 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
-import { useAuth } from '@/auth/AuthProvider'
+import { useAuth } from '@/auth/authContext'
 import { RouteErrorBoundary } from '@/components/RouteErrorBoundary'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
